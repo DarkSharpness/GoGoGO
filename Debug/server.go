@@ -6,6 +6,27 @@ import (
 	"net"
 )
 
+func main() {
+	// 建立 tcp 服务
+	listen, err := net.Listen("tcp", "0.0.0.0:1080")
+	if err != nil {
+		fmt.Printf("listen failed, err:%v\n", err)
+		return
+	}
+	defer listen.Close()
+
+	for {
+		// 等待客户端建立连接
+		conn, err := listen.Accept()
+		if err != nil {
+			fmt.Printf("accept failed, err:%v\n", err)
+			continue
+		}
+		// 启动一个单独的 goroutine 去处理连接
+		go process(conn)
+	}
+}
+
 func process(conn net.Conn) {
 	// 处理完关闭连接
 	defer conn.Close()
@@ -35,25 +56,5 @@ func process(conn net.Conn) {
 	if err != nil {
 		fmt.Printf("write from conn failed, err:%v\n", err)
 		return
-	}
-}
-
-func main() {
-	// 建立 tcp 服务
-	listen, err := net.Listen("tcp", "0.0.0.0:1919")
-	if err != nil {
-		fmt.Printf("listen failed, err:%v\n", err)
-		return
-	}
-	defer listen.Close()
-	for {
-		// 等待客户端建立连接
-		conn, err := listen.Accept()
-		if err != nil {
-			fmt.Printf("accept failed, err:%v\n", err)
-			continue
-		}
-		// 启动一个单独的 goroutine 去处理连接
-		go process(conn)
 	}
 }
