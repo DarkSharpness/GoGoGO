@@ -6,6 +6,8 @@ import (
 	"fmt"
 	"io"
 	"net"
+	"strconv"
+	// "strings"
 )
 
 func main() {
@@ -28,21 +30,15 @@ func main() {
 
 /* Process the connection. */
 func process(client net.Conn) {
-	defer client.Close()
-
-	// remoteAddr := client.RemoteAddr().String()
-	// fmt.Printf("Connection from %s\n", remoteAddr)
-
-	// client.Write([]byte("Hello world!"))
 	err := Socks5_Auth(client)
 	if err != nil {
-		fmt.Println("Authorization failed: %v", err)
+		fmt.Printf("Authorization failed: %v\n", err)
 		return
 	}
 
 	target, err := Socks5_Connect(client)
 	if err != nil {
-		fmt.Println("Connection failed: %v", err)
+		fmt.Printf("Connection failed: %v\n", err)
 		return
 	}
 
@@ -82,7 +78,7 @@ func Socks5_Auth(client net.Conn) error {
 func Socks5_Connect(client net.Conn) (net.Conn, error) {
 	var buf [512]byte
 
-	// Read in first 2 byte of header information.
+	// Read in first 4 byte of header information.
 	n, err := client.Read(buf[:4])
 	if n != 4 {
 		return nil, errors.New("Header Error " + err.Error())
@@ -117,7 +113,7 @@ func Socks5_Connect(client net.Conn) (net.Conn, error) {
 		if n != int(buf[0])+3 {
 			return nil, errors.New("Invalid domain!")
 		}
-		addr = string(buf[0:n-2]) + fmt.Sprintf(":%v", port)
+		addr = string(buf[1:n-2]) + fmt.Sprintf(":%v", port)
 		break
 
 	case 0x04: // ipv6 case
@@ -135,18 +131,34 @@ func Socks5_Connect(client net.Conn) (net.Conn, error) {
 		addr += fmt.Sprintf("%x", binary.BigEndian.Uint16(buf[14:16]))
 		addr += fmt.Sprintf("]:%d", port)
 		break
+
 	default: // Error case
 		return nil, errors.New("Invalid aytp!")
 	}
 
 	// Tries to dial the address
-	dest, err := net.Dial("TCP", addr)
+	fmt.Println(addr)
+	dest, err := net.Dial("tcp", addr)
+
 	if err != nil {
+		client.Write([]byte{0x05, 0x05, 0x00, 0x01, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00})
+		dest.Close()
 		return nil, err
 	}
 
-	// Send a message to client
-	n, err = client.Write([]byte{0x05, 0x05, 0x00, 0x01, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00})
+	IP_str, port_str, err := net.SplitHostPort(dest.LocalAddr().String())
+	IP := net.ParseIP(IP_str)
+	port_32, _ := strconv.Atoi(port_str)
+	port = uint16(port_32)
+
+	rvl := []byte{0x05, 0x00, 0x00, 0x04}
+	rvl = append(rvl, IP...)
+
+	tmp := binary.BigEndian.AppendUint16(rvl, port)
+	fmt.Println(tmp)
+
+	_, err = client.Write(binary.BigEndian.AppendUint16([]byte(rvl), port))
+
 	if err != nil {
 		dest.Close()
 		return nil, err
@@ -156,6 +168,7 @@ func Socks5_Connect(client net.Conn) (net.Conn, error) {
 }
 
 func Socks5_Forward(client, target net.Conn) {
+	fmt.Println("Success!")
 	// Forward 2 connection
 	go forward(client, target)
 	go forward(target, client)
