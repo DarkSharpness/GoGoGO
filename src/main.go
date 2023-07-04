@@ -7,7 +7,7 @@ import (
 	"io"
 	"net"
 	"strconv"
-	// "strings"
+	"strings"
 )
 
 func main() {
@@ -137,12 +137,17 @@ func Socks5_Connect(client net.Conn) (net.Conn, error) {
 	}
 
 	// Tries to dial the address
-	fmt.Println(addr)
-	dest, err := net.Dial("tcp", addr)
+	if atyp == 0x03 {
+		fmt.Printf("Website domain: %v\n", addr)
+	} else if atyp == 0x01 {
+		fmt.Println("Website ipv4: %v\n", addr)
+	} else {
+		fmt.Println("Website ipv6: %v\n", addr)
+	}
 
+	dest, err := net.Dial("tcp", addr)
 	if err != nil {
 		client.Write([]byte{0x05, 0x05, 0x00, 0x01, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00})
-		dest.Close()
 		return nil, err
 	}
 
@@ -151,13 +156,20 @@ func Socks5_Connect(client net.Conn) (net.Conn, error) {
 	port_32, _ := strconv.Atoi(port_str)
 	port = uint16(port_32)
 
-	rvl := []byte{0x05, 0x00, 0x00, 0x04}
+	if atyp == 0x03 {
+		if strings.Contains(IP_str, ".") {
+			IP = IP[12:]
+			atyp = 0x01
+		} else {
+			atyp = 0x04
+		}
+	}
+
+	rvl := []byte{0x05, 0x00, 0x00, byte(atyp)}
 	rvl = append(rvl, IP...)
 
-	tmp := binary.BigEndian.AppendUint16(rvl, port)
-	fmt.Println(tmp)
-
 	_, err = client.Write(binary.BigEndian.AppendUint16([]byte(rvl), port))
+	fmt.Printf("Local IP: %v Port: %v\n", IP, port)
 
 	if err != nil {
 		dest.Close()
