@@ -39,6 +39,7 @@ func process(client net.Conn) {
 	target, err := Socks5_Connect(client)
 	if err != nil {
 		fmt.Printf("Connection failed: %v\n", err)
+		client.Close()
 		return
 	}
 
@@ -105,7 +106,7 @@ func Socks5_Connect(client net.Conn) (net.Conn, error) {
 	}
 
 	// Get the full string and the buffer first
-	addr, err := Address_Parse(client, atyp)
+	addr_arr, err := TCP_Address_Read(client, atyp)
 	if err != nil {
 		if err.Error() == "invalid address!" {
 			client.Write([]byte{0x05, 0x08, 0x00, 0x01,
@@ -113,8 +114,9 @@ func Socks5_Connect(client net.Conn) (net.Conn, error) {
 		}
 		return nil, err
 	}
+	addr := TCP_Address_Parse(addr_arr, atyp)
 
-	// Tries to dial the address
+	// Custom debug message.
 	if atyp == 0x03 {
 		fmt.Printf("Website domain: %v\n", addr)
 	} else if atyp == 0x01 {
@@ -123,6 +125,7 @@ func Socks5_Connect(client net.Conn) (net.Conn, error) {
 		fmt.Printf("Website ipv6: %v\n", addr)
 	}
 
+	// Tries to dial the address
 	dest, err := net.Dial("tcp", addr)
 	if err != nil {
 		var code byte
@@ -144,24 +147,14 @@ func Socks5_Connect(client net.Conn) (net.Conn, error) {
 		return nil, errors.New("dial failure: " + str)
 	}
 
-	IP_str, port_str, _ := net.SplitHostPort(dest.LocalAddr().String())
-	IP := net.ParseIP(IP_str)
-	port_32, _ := strconv.Atoi(port_str)
-	port := uint16(port_32)
-
-	if len(IP) == 4 {
+	IP := Parse_IP_Port(dest.LocalAddr().String())
+	if len(IP) == 6 { // ipv4 = 4 + 2
 		atyp = 0x01
-	} else {
+	} else { // ipv6 = 16 + 2
 		atyp = 0x04
 	}
 
-	rvl := append([]byte{0x05, 0x00, 0x00, byte(atyp)}, IP...)
-
-	//  Debug use only
-	fmt.Printf("Local IP: %v New Port: %v\n", IP, port)
-	fmt.Printf("Debug: %v\n", binary.BigEndian.AppendUint16(rvl, port))
-
-	_, err = client.Write(binary.BigEndian.AppendUint16(rvl, port))
+	_, err = client.Write(append([]byte{0x05, 0x00, 0x00, byte(atyp)}, IP...))
 	if err != nil {
 		dest.Close()
 		return nil, err
@@ -169,44 +162,19 @@ func Socks5_Connect(client net.Conn) (net.Conn, error) {
 	return dest, nil
 }
 
-func Address_Parse(client net.Conn, atyp int) (string, error) {
-	var buf [260]byte
-	var err error
-	addr := string("")
-
-	// Check the atyp first
+func TCP_Address_Parse(buf []byte, atyp int) string {
+	addr := ""
 	switch atyp {
 	case 0x01: // ipv4 case
-		_, err = io.ReadFull(client, buf[:6])
-		if err != nil {
-			return addr, errors.New("read error!" + err.Error())
-		}
-
 		addr = fmt.Sprintf("%d.%d.%d.%d:%d", buf[0], buf[1], buf[2], buf[3],
 			binary.BigEndian.Uint16(buf[4:6]))
-		break
 
 	case 0x03: // domain case
-		_, err = io.ReadFull(client, buf[:1])
-		if err != nil {
-			return addr, errors.New("read error!" + err.Error())
-		}
-		len := int(buf[0]) + 2
-		_, err = io.ReadFull(client, buf[:len])
-		if err != nil {
-			return addr, errors.New("read error!" + err.Error())
-		}
-
-		addr = string(buf[0:len-2]) + fmt.Sprintf(":%v",
-			binary.BigEndian.Uint16(buf[len-2:len]))
-		break
+		len := int(buf[0])
+		addr = string(buf[1:1+len]) + fmt.Sprintf(":%v",
+			binary.BigEndian.Uint16(buf[1+len:1+len+2]))
 
 	case 0x04: // ipv6 case
-		_, err = io.ReadFull(client, buf[:18])
-		if err != nil {
-			return addr, errors.New("read error!" + err.Error())
-		}
-
 		addr = "["
 		addr += fmt.Sprintf("%x:", binary.BigEndian.Uint16(buf[0:2]))
 		addr += fmt.Sprintf("%x:", binary.BigEndian.Uint16(buf[2:4]))
@@ -215,25 +183,68 @@ func Address_Parse(client net.Conn, atyp int) (string, error) {
 		addr += fmt.Sprintf("%x:", binary.BigEndian.Uint16(buf[8:10]))
 		addr += fmt.Sprintf("%x:", binary.BigEndian.Uint16(buf[10:12]))
 		addr += fmt.Sprintf("%x:", binary.BigEndian.Uint16(buf[12:14]))
-		addr += fmt.Sprintf("%x", binary.BigEndian.Uint16(buf[14:16]))
-		addr += fmt.Sprintf("]:%d", binary.BigEndian.Uint16(buf[16:18]))
-		break
+		addr += fmt.Sprintf("%x]", binary.BigEndian.Uint16(buf[14:16]))
+		addr += fmt.Sprintf(":%d", binary.BigEndian.Uint16(buf[16:18]))
+	}
+	return addr
+}
+
+func TCP_Address_Read(client net.Conn, atyp int) ([]byte, error) {
+	var buf [260]byte
+	var err error
+
+	// Check the atyp first
+	switch atyp {
+	case 0x01: // ipv4 case
+		_, err = io.ReadFull(client, buf[:6])
+		if err != nil {
+			return nil, errors.New("read error!" + err.Error())
+		}
+
+		return buf[:6], nil
+
+	case 0x03: // domain case
+		_, err = io.ReadFull(client, buf[:1])
+		if err != nil {
+			return nil, errors.New("read error!" + err.Error())
+		}
+		len := int(buf[0])
+		_, err = io.ReadFull(client, buf[1:1+len+2])
+		if err != nil {
+			return nil, errors.New("read error!" + err.Error())
+		}
+
+		return buf[:1+len+2], nil
+
+	case 0x04: // ipv6 case
+		_, err = io.ReadFull(client, buf[:18])
+		if err != nil {
+			return nil, errors.New("read error!" + err.Error())
+		}
+
+		return buf[:18], nil
 
 	default:
-		return addr, errors.New("invalid address!")
+		return nil, errors.New("invalid address!")
 	}
-	return addr, nil
 }
 
 func Socks5_Forward(client, target net.Conn) {
 	fmt.Println("Connection Success!")
 	// Forward 2 connection
-	go forward(client, target)
-	go forward(target, client)
+	go Forward(client, target)
+	go Forward(target, client)
 }
 
-func forward(src, dest net.Conn) {
+func Forward(src, dest net.Conn) {
 	defer src.Close()
 	defer dest.Close()
 	io.Copy(src, dest)
+}
+
+func Parse_IP_Port(str string) []byte {
+	IP_str, port_str, _ := net.SplitHostPort(str)
+	IP := net.ParseIP(IP_str)
+	port, _ := strconv.Atoi(port_str)
+	return binary.BigEndian.AppendUint16(IP, uint16(port))
 }
