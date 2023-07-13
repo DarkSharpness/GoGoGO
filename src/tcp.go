@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"net"
+	"os"
 	"strconv"
 	"strings"
 )
@@ -76,16 +77,40 @@ func Forward(writer, reader net.Conn) {
 	defer writer.Close()
 	defer reader.Close()
 	buf := make([]byte, 32*1024)
+	tag := -1 // HTTP type tag.
+	// dat := make([]byte, 0)
+	// sum := 0 // Sum of length
 	for {
 		nr, err := reader.Read(buf[:32*1024])
+		if tag == -1 {
+			tag = Is_Http_Content(buf, nr)
+			if tag == 1 {
+				fmt.Println("HTTP GET!")
+			}
+			if tag == 2 {
+				fmt.Println("HTTP!")
+			}
+			if tag != 0 {
+				fmt.Println("DEBUG ||", string(buf[:64]))
+			}
+		}
+		// if tag != 0 {
+		// 	dat = append(dat, buf[:nr]...)
+		// 	sum += nr
+		// }
+		file, _ := os.OpenFile("/mnt/f/Code/Github/GoGoGo/Ignore/output.html",
+			os.O_APPEND|os.O_WRONLY|os.O_CREATE, 0644)
+		file.Write(buf[0:nr])
+		file.WriteString("\n-------------------------------------------------\n")
 		if nr > 0 {
 			nw, er := writer.Write(buf[0:nr])
 			if nr < nw || er != nil {
+				fmt.Println("DEBUG || End of forward operation!")
 				return
 			}
 		}
-		fmt.Println("DEBUG ||", string(buf[:64]))
 		if err != nil {
+			fmt.Println("DEBUG || End of forward operation!")
 			return
 		}
 	}
