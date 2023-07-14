@@ -4,8 +4,8 @@ import (
 	"encoding/binary"
 	"errors"
 	"fmt"
+	"io"
 	"net"
-	"os"
 	"strconv"
 	"strings"
 )
@@ -69,46 +69,53 @@ func Parse_IP_Port(str string) []byte {
 func TCP_forward(client, target net.Conn) {
 	fmt.Println("Connection Success!")
 	// Forward 2 connection
-	go Forward(client, target)
-	go Forward(target, client)
+	go Forward_Client(client, target)
+	go Forward_Target(target, client)
 }
 
-func Forward(writer, reader net.Conn) {
-	defer writer.Close()
-	defer reader.Close()
+// Forward from target to client
+func Forward_Target(target, client net.Conn) {
+	defer target.Close()
+	defer client.Close()
+	io.Copy(client, target)
+}
+
+// Forward from client to target
+func Forward_Client(client, target net.Conn) {
+	defer target.Close()
+	defer client.Close()
+	// HTTP type tag	|| -1 Not Set || 0 not HTTP
+	// 					|| 1 HTTP GET || 2 HTTP NOT GET
+	//					|| 3 HTTP GET parsed
+	tag := -1
 	buf := make([]byte, 32*1024)
-	tag := -1 // HTTP type tag.
-	// dat := make([]byte, 0)
-	// sum := 0 // Sum of length
+	data := make([]byte, 0)
+	lens := 0
 	for {
-		nr, err := reader.Read(buf[:32*1024])
+		nr, err := client.Read(buf[:32*1024])
 		if tag == -1 {
 			tag = Is_Http_Content(buf, nr)
-			if tag == 1 {
-				fmt.Println("HTTP GET!")
-			}
-			if tag == 2 {
-				fmt.Println("HTTP!")
-			}
-			if tag != 0 {
-				fmt.Println("DEBUG ||", string(buf[:64]))
+		}
+		// HTTP GET
+		if tag == 1 {
+			lens += nr
+			data = append(data, buf[:nr]...)
+			headers := strings.Split(string(data), "\r\n\r\n")
+			// End of GET case
+			if headers[len(headers)-1] == "" {
+				Http_Get_Parse(data, lens)
+				tag = 3
 			}
 		}
-		// if tag != 0 {
-		// 	dat = append(dat, buf[:nr]...)
-		// 	sum += nr
-		// }
-		file, _ := os.OpenFile("/mnt/f/Code/Github/GoGoGo/Ignore/output.html",
-			os.O_APPEND|os.O_WRONLY|os.O_CREATE, 0644)
-		file.Write(buf[0:nr])
-		file.WriteString("\n-------------------------------------------------\n")
+		// No need to send 0 pack
 		if nr > 0 {
-			nw, er := writer.Write(buf[0:nr])
+			nw, er := target.Write(buf[0:nr])
 			if nr < nw || er != nil {
 				fmt.Println("DEBUG || End of forward operation!")
 				return
 			}
 		}
+		// Deal with error!
 		if err != nil {
 			fmt.Println("DEBUG || End of forward operation!")
 			return

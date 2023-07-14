@@ -27,8 +27,10 @@ func Is_Http_Content(buf []byte, n int) int {
 	}
 }
 
-func Http_Parse(buf []byte, n int) {
-	resp, err := http.ReadResponse(bufio.NewReader(bytes.NewBuffer(buf)), nil)
+// Parse HTTP GET
+func Http_Get_Parse(buf []byte, n int) {
+	fmt.Println("DEBUG ||", string(buf[:n]))
+	resp, err := http.ReadRequest(bufio.NewReader(bytes.NewBuffer(buf)))
 	if err != nil {
 		fmt.Println("DEBUG || What the fuck is that:", err)
 		return
@@ -38,7 +40,7 @@ func Http_Parse(buf []byte, n int) {
 	cookie := resp.Cookies()
 	lens := len(cookie)
 	for i := 0; i < lens; i++ {
-		fmt.Println("DEBUG ||", cookie[i].Value)
+		fmt.Printf("DEBUG || %v %v \n", cookie[i].Name, cookie[i].Value)
 	}
 	return
 }
