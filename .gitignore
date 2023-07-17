@@ -2,7 +2,7 @@
 /Ignore
 test.go
 /docs
-src/main
+main
 localhost.cnf
 localhost.crt
 localhost.key

@@ -1,3 +1,3 @@
-# GoGoGO
+# GoGoGo
 
 Go Language Testing!
