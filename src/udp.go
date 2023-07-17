@@ -154,20 +154,6 @@ func Listen_Remote_UDP(client, remote *net.UDPConn, client_addr *net.UDPAddr) {
 		if err != nil {
 			return
 		}
-
-		// IP := addr.IP
-		// port := uint16(addr.Port)
-		rvl :=
-			[]byte{}
-		// []byte{0x00, 0x00, 0x00}
-
-		// if IP.To4() != nil { // ipv4 version
-		// 	rvl = append(rvl, 0x01)
-		// 	rvl = append(rvl, binary.BigEndian.AppendUint16(IP.To4(), port)...)
-		// } else { // ipv6 version
-		// 	rvl = append(rvl, 0x04)
-		// 	rvl = append(rvl, binary.BigEndian.AppendUint16(IP.To16(), port)...)
-		// }
-		client.WriteToUDP(append(rvl, buf[0:n]...), client_addr)
+		client.WriteToUDP(buf[0:n], client_addr)
 	}
 }

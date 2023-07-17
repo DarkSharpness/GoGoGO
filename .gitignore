@@ -3,3 +3,7 @@
 test.go
 /docs
 src/main
+localhost.cnf
+localhost.crt
+localhost.key
+/tls.go

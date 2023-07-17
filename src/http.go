@@ -10,18 +10,16 @@ import (
 
 // Return 0 if not HTTP
 // Return 1 if HTTP GET
-// Return 2 if HTTP NOT GET
-func Is_Http_Content(buf []byte, n int) int {
-	if n > 16 {
-		n = 16
+// Return 2 if HTTP POST
+func Is_Get_Content(buf []byte, n int) int {
+	if n > 8 {
+		n = 8
 	}
 	str := string(buf[:n])
-	if strings.Contains(str, "HTTP") {
-		if strings.Contains(str, "GET") {
-			return 1
-		} else {
-			return 2
-		}
+	if strings.Contains(str, "GET") {
+		return 1
+	} else if strings.Contains(str, "POST") {
+		return 2
 	} else {
 		return 0
 	}

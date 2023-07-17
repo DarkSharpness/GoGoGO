@@ -84,18 +84,23 @@ func Forward_Target(target, client net.Conn) {
 func Forward_Client(client, target net.Conn) {
 	defer target.Close()
 	defer client.Close()
-	// HTTP type tag	|| -1 Not Set || 0 not HTTP
-	// 					|| 1 HTTP GET || 2 HTTP NOT GET
+	// HTTP type tag	|| -1 Not Set || 0 Not HTTP
+	// 					|| 1 HTTP GET || 2 HTTP POST
 	//					|| 3 HTTP GET parsed
 	tag := -1
 	buf := make([]byte, 32*1024)
 	data := make([]byte, 0)
 	lens := 0
+	i := 0
 	for {
+		i++
 		nr, err := client.Read(buf[:32*1024])
+
+		// init case
 		if tag == -1 {
-			tag = Is_Http_Content(buf, nr)
+			tag = Is_Get_Content(buf, nr)
 		}
+
 		// HTTP GET
 		if tag == 1 {
 			lens += nr
@@ -104,17 +109,28 @@ func Forward_Client(client, target net.Conn) {
 			// End of GET case
 			if headers[len(headers)-1] == "" {
 				Http_Get_Parse(data, lens)
-				tag = 3
+				tag = -1
 			}
 		}
+
+		// file, _ := os.OpenFile("/mnt/f/Code/Github/GoGoGo/Ignore/fuck.html",
+		// 	os.O_APPEND|os.O_WRONLY|os.O_CREATE, 0644)
+		// file.Write(buf[0:nr])
+		// file.WriteString("\n-------------------------------------------------")
+		// file.WriteString(fmt.Sprint(i) + "\n")
+
 		// No need to send 0 pack
 		if nr > 0 {
 			nw, er := target.Write(buf[0:nr])
-			if nr < nw || er != nil {
+			if er == io.EOF {
 				fmt.Println("DEBUG || End of forward operation!")
+			}
+			if nr < nw || er != nil {
+				fmt.Println("DEBUG || Exit!")
 				return
 			}
 		}
+
 		// Deal with error!
 		if err != nil {
 			fmt.Println("DEBUG || End of forward operation!")
