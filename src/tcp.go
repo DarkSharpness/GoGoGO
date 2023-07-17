@@ -55,7 +55,7 @@ func TCP_Connection(client net.Conn, atyp int, addr string) error {
 		return err
 	}
 
-	TCP_forward(client, target)
+	TCP_Connect(client, target)
 	return nil
 }
 
@@ -66,7 +66,7 @@ func Parse_IP_Port(str string) []byte {
 	return binary.BigEndian.AppendUint16(ip, uint16(port))
 }
 
-func TCP_forward(client, target net.Conn) {
+func TCP_Connect(client, target net.Conn) {
 	fmt.Println("Connection Success!")
 	// Forward 2 connection
 	go Forward_Client(client, target)
@@ -82,19 +82,21 @@ func Forward_Target(target, client net.Conn) {
 
 // Forward from client to target
 func Forward_Client(client, target net.Conn) {
-	defer target.Close()
 	defer client.Close()
+	defer target.Close()
+
 	// HTTP type tag	|| -1 Not Set || 0 Not HTTP
 	// 					|| 1 HTTP GET || 2 HTTP POST
 	//					|| 3 HTTP GET parsed
 	tag := -1
-	buf := make([]byte, 32*1024)
+
+	const size = 32 * 1024
+	buf := make([]byte, size) // 32k buffer
 	data := make([]byte, 0)
 	lens := 0
-	i := 0
+
 	for {
-		i++
-		nr, err := client.Read(buf[:32*1024])
+		nr, er := client.Read(buf[:size])
 
 		// init case
 		if tag == -1 {
@@ -121,18 +123,15 @@ func Forward_Client(client, target net.Conn) {
 
 		// No need to send 0 pack
 		if nr > 0 {
-			nw, er := target.Write(buf[0:nr])
-			if er == io.EOF {
+			nw, ew := target.Write(buf[0:nr])
+			if nw < nr || ew != nil {
 				fmt.Println("DEBUG || End of forward operation!")
-			}
-			if nr < nw || er != nil {
-				fmt.Println("DEBUG || Exit!")
 				return
 			}
 		}
 
 		// Deal with error!
-		if err != nil {
+		if er != nil {
 			fmt.Println("DEBUG || End of forward operation!")
 			return
 		}
