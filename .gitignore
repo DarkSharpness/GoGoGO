@@ -2,8 +2,9 @@
 /Ignore
 test.go
 /docs
-main
 localhost.cnf
 localhost.crt
 localhost.key
 /tls.go
+tls
+src
