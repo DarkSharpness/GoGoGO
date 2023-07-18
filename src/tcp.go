@@ -6,10 +6,10 @@ import (
 	"fmt"
 	"io"
 	"net"
-	"strconv"
 	"strings"
 )
 
+// Main function for TCP
 func TCP_Connection(client net.Conn, atyp int, addr string) error {
 	// Custom debug message.
 	if atyp == 0x03 {
@@ -23,25 +23,13 @@ func TCP_Connection(client net.Conn, atyp int, addr string) error {
 	// Tries to dial the address
 	target, err := net.Dial("tcp", addr)
 	if err != nil {
-		var code byte
-		// error string shortcut
-		str := err.Error()
-		if strings.Contains(str, "no route") {
-			code = 0x03
-		} else if strings.Contains(str, "lookup") {
-			code = 0x04
-		} else if strings.Contains(str, "network is unreachable") {
-			code = 0x03
-		} else if strings.Contains(str, "name resolution") {
-			code = 0x04
-		} else if strings.Contains(str, "refused") {
-			code = 0x05
-		}
+		var code = TCP_Error_Parse(err)
 		client.Write([]byte{0x05, code, 0x00, 0x01,
 			0x00, 0x00, 0x00, 0x00, 0x00, 0x00})
-		return errors.New("dial failure: " + str)
+		return errors.New("dial failure: " + err.Error())
 	}
 
+	// IP string
 	IP := Parse_IP_Port(target.LocalAddr().String())
 	if len(IP) == 6 { // ipv4 = 4 + 2
 		atyp = 0x01
@@ -55,85 +43,98 @@ func TCP_Connection(client net.Conn, atyp int, addr string) error {
 		return err
 	}
 
-	TCP_Connect(client, target)
+	// Forward 2 connection
+	fmt.Println("Connection Success!")
+	go Forward_Client(client, target)
+	go Forward_Target(client, target)
 	return nil
 }
 
-func Parse_IP_Port(str string) []byte {
-	ip_str, port_str, _ := net.SplitHostPort(str)
-	ip := net.ParseIP(ip_str)
-	port, _ := strconv.Atoi(port_str)
-	return binary.BigEndian.AppendUint16(ip, uint16(port))
+// Parse a TCP Address
+func TCP_Address_Parse(buf []byte, atyp int) string {
+	addr := ""
+	switch atyp {
+	case 0x01: // ipv4 case
+		addr = fmt.Sprintf("%d.%d.%d.%d:%d", buf[0], buf[1], buf[2], buf[3],
+			binary.BigEndian.Uint16(buf[4:6]))
+
+	case 0x03: // domain case
+		len := int(buf[0])
+		addr = string(buf[1:1+len]) + fmt.Sprintf(":%v",
+			binary.BigEndian.Uint16(buf[1+len:1+len+2]))
+
+	case 0x04: // ipv6 case
+		addr = "["
+		addr += fmt.Sprintf("%x:", binary.BigEndian.Uint16(buf[0:2]))
+		addr += fmt.Sprintf("%x:", binary.BigEndian.Uint16(buf[2:4]))
+		addr += fmt.Sprintf("%x:", binary.BigEndian.Uint16(buf[4:6]))
+		addr += fmt.Sprintf("%x:", binary.BigEndian.Uint16(buf[6:8]))
+		addr += fmt.Sprintf("%x:", binary.BigEndian.Uint16(buf[8:10]))
+		addr += fmt.Sprintf("%x:", binary.BigEndian.Uint16(buf[10:12]))
+		addr += fmt.Sprintf("%x:", binary.BigEndian.Uint16(buf[12:14]))
+		addr += fmt.Sprintf("%x]", binary.BigEndian.Uint16(buf[14:16]))
+		addr += fmt.Sprintf(":%d", binary.BigEndian.Uint16(buf[16:18]))
+	}
+	return addr
 }
 
-func TCP_Connect(client, target net.Conn) {
-	fmt.Println("Connection Success!")
-	// Forward 2 connection
-	go Forward_Client(client, target)
-	go Forward_Target(target, client)
+// Read from a TCP connection
+func TCP_Address_Read(client net.Conn, atyp int) ([]byte, error) {
+	var buf [260]byte
+	var err error
+
+	// Check the atyp first
+	switch atyp {
+	case 0x01: // ipv4 case
+		_, err = io.ReadFull(client, buf[:6])
+		if err != nil {
+			return nil, errors.New("read error!" + err.Error())
+		}
+
+		return buf[:6], nil
+
+	case 0x03: // domain case
+		_, err = io.ReadFull(client, buf[:1])
+		if err != nil {
+			return nil, errors.New("read error!" + err.Error())
+		}
+		len := int(buf[0])
+		_, err = io.ReadFull(client, buf[1:1+len+2])
+		if err != nil {
+			return nil, errors.New("read error!" + err.Error())
+		}
+
+		return buf[:1+len+2], nil
+
+	case 0x04: // ipv6 case
+		_, err = io.ReadFull(client, buf[:18])
+		if err != nil {
+			return nil, errors.New("read error!" + err.Error())
+		}
+
+		return buf[:18], nil
+
+	default:
+		return nil, errors.New("invalid address!")
+	}
 }
 
-// Forward from target to client
-func Forward_Target(target, client net.Conn) {
-	defer target.Close()
-	defer client.Close()
-	io.Copy(client, target)
-}
-
-// Forward from client to target
-func Forward_Client(client, target net.Conn) {
-	defer client.Close()
-	defer target.Close()
-
-	// HTTP type tag	|| -1 Not Set || 0 Not HTTP
-	// 					|| 1 HTTP GET || 2 HTTP POST
-	//					|| 3 HTTP GET parsed
-	tag := -1
-
-	const size = 32 * 1024
-	buf := make([]byte, size) // 32k buffer
-	data := make([]byte, 0)
-	lens := 0
-
-	for {
-		nr, er := client.Read(buf[:size])
-
-		// init case
-		if tag == -1 {
-			tag = Is_Get_Content(buf, nr)
-		}
-
-		// HTTP GET
-		if tag == 1 {
-			lens += nr
-			data = append(data, buf[:nr]...)
-			headers := strings.Split(string(data), "\r\n\r\n")
-			// End of GET case
-			if headers[len(headers)-1] == "" {
-				Http_Get_Parse(data, lens)
-				tag = -1
-			}
-		}
-
-		// file, _ := os.OpenFile("/mnt/f/Code/Github/GoGoGo/Ignore/fuck.html",
-		// 	os.O_APPEND|os.O_WRONLY|os.O_CREATE, 0644)
-		// file.Write(buf[0:nr])
-		// file.WriteString("\n-------------------------------------------------")
-		// file.WriteString(fmt.Sprint(i) + "\n")
-
-		// No need to send 0 pack
-		if nr > 0 {
-			nw, ew := target.Write(buf[0:nr])
-			if nw < nr || ew != nil {
-				fmt.Println("DEBUG || End of forward operation!")
-				return
-			}
-		}
-
-		// Deal with error!
-		if er != nil {
-			fmt.Println("DEBUG || End of forward operation!")
-			return
-		}
+func TCP_Error_Parse(err error) byte {
+	str := err.Error()
+	// error string shortcut
+	if strings.Contains(str, "no route") {
+		return 0x03
+	} else if strings.Contains(str, "lookup") {
+		return 0x04
+	} else if strings.Contains(str, "network is unreachable") {
+		return 0x03
+	} else if strings.Contains(str, "name resolution") {
+		return 0x04
+	} else if strings.Contains(str, "refused") {
+		return 0x05
+	} else {
+		// This shoud never happen
+		fmt.Println("DEBUG || This should never happen......Fuck!")
+		return 0x00
 	}
 }

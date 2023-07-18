@@ -2,9 +2,10 @@
 /Ignore
 test.go
 /docs
-localhost.cnf
-localhost.crt
-localhost.key
+*.cnf
+*.crt
+*.key
+*.csr
 /tls.go
+main
 tls
-src

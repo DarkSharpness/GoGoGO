@@ -1,35 +1,23 @@
 package main
 
 import (
-	"encoding/binary"
+	"crypto/tls"
 	"errors"
 	"fmt"
 	"io"
 	"net"
 )
 
+// Whether to enable TLS hijack
+const plays_genshin_impact = false
+
 func main() {
 	fmt.Println("Hello World!")
-	server, err := net.Listen("tcp", ":8080")
-	if err != nil {
-		fmt.Printf("Listen failed: %v\n", err)
-		return
-	}
-	defer server.Close()
-
-	for {
-		client, err := server.Accept()
-		if err != nil {
-			fmt.Printf("Accept failed: %v", err)
-			continue
-		}
-
-		go process(client)
-	}
+	Socks5_Link(":8080")
 }
 
 /* Process the connection. */
-func process(client net.Conn) {
+func Process(client net.Conn) {
 	err := Socks5_Auth(client)
 	if err != nil {
 		fmt.Printf("Authorization failed: %v\n", err)
@@ -48,6 +36,7 @@ func process(client net.Conn) {
 func Socks5_Auth(client net.Conn) error {
 	var buf [260]byte
 
+	// Read first.
 	_, err := io.ReadFull(client, buf[:2])
 	if err != nil {
 		return errors.New("read Error: " + err.Error())
@@ -65,6 +54,7 @@ func Socks5_Auth(client net.Conn) error {
 		return errors.New("read Error: " + err.Error())
 	}
 
+	// Check whether there is 0x00 method.
 	flag := true
 	for i := 0; i != Nmethod; i++ {
 		if buf[i] == 0x00 {
@@ -116,77 +106,60 @@ func Socks5_Connect(client net.Conn) error {
 	addr := TCP_Address_Parse(user_addr, atyp)
 
 	if cmd == 1 {
-		return TCP_Connection(client, atyp, addr)
+		if plays_genshin_impact {
+			return TLS_Connection(client, atyp, addr)
+		} else {
+			return TCP_Connection(client, atyp, addr)
+		}
 	} else if cmd == 3 {
 		return UDP_Connection(client, atyp, addr)
 	} else {
-		return nil
+		return errors.New("This should never happen...... God knows!")
 	}
 }
 
-func TCP_Address_Parse(buf []byte, atyp int) string {
-	addr := ""
-	switch atyp {
-	case 0x01: // ipv4 case
-		addr = fmt.Sprintf("%d.%d.%d.%d:%d", buf[0], buf[1], buf[2], buf[3],
-			binary.BigEndian.Uint16(buf[4:6]))
-
-	case 0x03: // domain case
-		len := int(buf[0])
-		addr = string(buf[1:1+len]) + fmt.Sprintf(":%v",
-			binary.BigEndian.Uint16(buf[1+len:1+len+2]))
-
-	case 0x04: // ipv6 case
-		addr = "["
-		addr += fmt.Sprintf("%x:", binary.BigEndian.Uint16(buf[0:2]))
-		addr += fmt.Sprintf("%x:", binary.BigEndian.Uint16(buf[2:4]))
-		addr += fmt.Sprintf("%x:", binary.BigEndian.Uint16(buf[4:6]))
-		addr += fmt.Sprintf("%x:", binary.BigEndian.Uint16(buf[6:8]))
-		addr += fmt.Sprintf("%x:", binary.BigEndian.Uint16(buf[8:10]))
-		addr += fmt.Sprintf("%x:", binary.BigEndian.Uint16(buf[10:12]))
-		addr += fmt.Sprintf("%x:", binary.BigEndian.Uint16(buf[12:14]))
-		addr += fmt.Sprintf("%x]", binary.BigEndian.Uint16(buf[14:16]))
-		addr += fmt.Sprintf(":%d", binary.BigEndian.Uint16(buf[16:18]))
-	}
-	return addr
-}
-
-func TCP_Address_Read(client net.Conn, atyp int) ([]byte, error) {
-	var buf [260]byte
-	var err error
-
-	// Check the atyp first
-	switch atyp {
-	case 0x01: // ipv4 case
-		_, err = io.ReadFull(client, buf[:6])
+func Socks5_Link(addr string) {
+	if plays_genshin_impact {
+		cert, err := tls.LoadX509KeyPair("localhost.crt", "localhost.key")
 		if err != nil {
-			return nil, errors.New("read error!" + err.Error())
+			fmt.Println("Proxy: loadkey:", err)
+			return
 		}
 
-		return buf[:6], nil
-
-	case 0x03: // domain case
-		_, err = io.ReadFull(client, buf[:1])
-		if err != nil {
-			return nil, errors.New("read error!" + err.Error())
+		config := &tls.Config{
+			Certificates:       []tls.Certificate{cert},
+			InsecureSkipVerify: true,
 		}
-		len := int(buf[0])
-		_, err = io.ReadFull(client, buf[1:1+len+2])
+		server, err := tls.Listen("tcp", addr, config)
 		if err != nil {
-			return nil, errors.New("read error!" + err.Error())
+			fmt.Println("Proxy: listen:", err)
+			return
 		}
+		defer server.Close()
 
-		return buf[:1+len+2], nil
-
-	case 0x04: // ipv6 case
-		_, err = io.ReadFull(client, buf[:18])
+		for {
+			client, err := server.Accept()
+			if err != nil {
+				fmt.Println("Proxy: accept:", err)
+				return
+			}
+			go Process(client)
+		}
+	} else {
+		server, err := net.Listen("tcp", addr)
 		if err != nil {
-			return nil, errors.New("read error!" + err.Error())
+			fmt.Println("Listen failed:", err)
+			return
 		}
+		defer server.Close()
 
-		return buf[:18], nil
-
-	default:
-		return nil, errors.New("invalid address!")
+		for {
+			client, err := server.Accept()
+			if err != nil {
+				fmt.Println("Accept failed:", err)
+				continue
+			}
+			go Process(client)
+		}
 	}
 }

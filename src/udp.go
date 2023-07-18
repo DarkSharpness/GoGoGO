@@ -6,6 +6,7 @@ import (
 	"net"
 )
 
+// Main function for UDP connection.
 func UDP_Connection(client_tcp net.Conn, atyp int, addr string) error {
 	var buf [512]byte
 	client_addr, err := net.ResolveUDPAddr("udp", addr)
@@ -41,7 +42,7 @@ func UDP_Connection(client_tcp net.Conn, atyp int, addr string) error {
 	// local_addr = []byte{0x7f, 0x00, 0x00, 0x01, 0x23, 0x28}
 	fmt.Println("DEBUG || Local udp ip:", local_addr)
 
-	// Atyo type
+	// Atyp type
 	var atyp_new byte
 	if len(local_addr) == 6 { // ipv4 = 4 + 2
 		atyp_new = 0x01
@@ -86,17 +87,19 @@ func UDP_Connection(client_tcp net.Conn, atyp int, addr string) error {
 	select {
 	case <-my_ctx.Done():
 	}
-	fmt.Println("end of this udp!")
+	fmt.Println("End of this udp!")
 	return nil
 }
 
+// Listen client udp connection
 func Listen_Client_UDP(client, remote *net.UDPConn, client_addr *net.UDPAddr) {
 	defer client.Close()
 	defer remote.Close()
-	buf := make([]byte, 32*1024)
+	const size = 32 * 1024
+	buf := make([]byte, size)
 
 	for {
-		n, addr, err := client.ReadFromUDP(buf)
+		n, addr, err := client.ReadFromUDP(buf[:size])
 		fmt.Println("DEBUG || Listen Client")
 		if err != nil {
 			break
@@ -143,13 +146,15 @@ func Listen_Client_UDP(client, remote *net.UDPConn, client_addr *net.UDPAddr) {
 	}
 }
 
+// Listen remote udp connection
 func Listen_Remote_UDP(client, remote *net.UDPConn, client_addr *net.UDPAddr) {
 	defer client.Close()
 	defer remote.Close()
-	buf := make([]byte, 32*1024)
+	const size = 32 * 1024
+	buf := make([]byte, size)
 
 	for {
-		n, _, err := remote.ReadFromUDP(buf[:])
+		n, _, err := remote.ReadFromUDP(buf[:size])
 		fmt.Println("DEBUG || Listen Remote")
 		if err != nil {
 			return
