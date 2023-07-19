@@ -4,7 +4,6 @@ import (
 	"encoding/binary"
 	"fmt"
 	"net"
-	"os"
 	"strconv"
 	"strings"
 )
@@ -28,16 +27,9 @@ func Forward_Target(client, target net.Conn) {
 		// Init case
 		if tag == -1 {
 			tag = Is_Response_Content(buf, nr)
-			fmt.Println("DEBUG || RESPONSE TAG")
 		}
 		// HTTP Response case
 		if tag > 0 {
-			// Debug only
-			file, _ := os.OpenFile("/home/GoGoGo/Ignore/response.html",
-				os.O_APPEND|os.O_WRONLY|os.O_CREATE, 0644)
-			file.Write(buf[0:nr])
-			file.WriteString("\n-------------------------------------------------\n")
-
 			// Main part.
 			lens += nr
 			data = append(data, buf[:nr]...)
@@ -47,7 +39,7 @@ func Forward_Target(client, target net.Conn) {
 				if index != -1 {
 					clens = Http_Response_Parse(data, lens)
 					if clens == -2 {
-						fmt.Println("DEBUG || ?????")
+						fmt.Println("DEBUG || HTTP Parse error")
 						return // HTTP Parse Error.
 					}
 				}
@@ -57,10 +49,11 @@ func Forward_Target(client, target net.Conn) {
 					if strings.HasSuffix(string(data[lens-5:lens]), "0\r\n\r\n") {
 						data, lens = Http_Response_Decode(data, lens)
 						if lens == -1 {
-							fmt.Println("DEBUG || ???")
+							fmt.Println("DEBUG || HTTP Parse error")
 							return // HTTP Parse Error
 						}
 						tag = -1
+						// os.Exit(1)
 					}
 				} else {
 					if lens == index+int(clens)+4 {
@@ -68,12 +61,12 @@ func Forward_Target(client, target net.Conn) {
 					}
 				}
 			}
+
 			if tag == -1 {
-				fmt.Println("DEBUG || Get complete message qwq!")
-				Http_Request_Modify(data, lens)
+				data, lens = Http_Response_Modify(data, lens)
 				nw, ew := client.Write(data[:lens])
 				if nw < lens || ew != nil {
-					fmt.Println("DEBUG || End of forward operation 3!")
+					fmt.Println("DEBUG || End of forward! 3")
 					return
 				}
 				data = data[:0]
@@ -86,7 +79,7 @@ func Forward_Target(client, target net.Conn) {
 			if nr > 0 {
 				nw, ew := client.Write(buf[0:nr])
 				if nw < nr || ew != nil {
-					fmt.Println("DEBUG || End of forward operation 3!")
+					fmt.Println("DEBUG || End of forward! 1")
 					return
 				}
 			}
@@ -94,7 +87,7 @@ func Forward_Target(client, target net.Conn) {
 
 		// Deal with error and return!
 		if er != nil {
-			fmt.Println("DEBUG || End of forward operation 4!", er)
+			fmt.Println("DEBUG || End of forward! 2")
 			return
 		}
 	}
@@ -117,22 +110,14 @@ func Forward_Client(client, target net.Conn) {
 		// Init case
 		if tag == -1 {
 			tag = Is_Request_Content(buf, nr)
-			fmt.Println("DEBUG || TAG", tag)
 		}
 		// HTTP Request case
 		if tag > 0 {
-			// Debug only
-			file, _ := os.OpenFile("/home/GoGoGo/Ignore/request.html",
-				os.O_APPEND|os.O_WRONLY|os.O_CREATE, 0644)
-			file.Write(buf[0:nr])
-			file.WriteString("\n-------------------------------------------------\n")
-
 			lens += nr
 			data = append(data, buf[:nr]...)
 			headers := strings.Split(string(data), "\r\n\r\n")
 			// End of GET case
 			if headers[len(headers)-1] == "" {
-				fmt.Println("DEBUG || True end of forward!")
 				tag = -1        // Reset
 				data = data[:0] // Reset
 				lens = 0        // Reset
@@ -143,14 +128,14 @@ func Forward_Client(client, target net.Conn) {
 		if nr > 0 {
 			nw, ew := target.Write(buf[0:nr])
 			if nw < nr || ew != nil {
-				fmt.Println("DEBUG || End of forward operation 1!", ew)
+				fmt.Println("DEBUG || End of forward! 4")
 				return
 			}
 		}
 
 		// Deal with error!
 		if er != nil {
-			fmt.Println("DEBUG || End of forward operation 2!", er)
+			fmt.Println("DEBUG || End of forward! 5")
 			return
 		}
 	}

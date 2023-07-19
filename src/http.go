@@ -50,7 +50,6 @@ func Is_Response_Content(buf []byte, n int) int {
 
 // Parse HTTP GET
 func Http_Request_Parse(buf []byte, n int) error {
-	fmt.Println("DEBUG ||", string(buf[:n]))
 	_, err := http.ReadRequest(bufio.NewReader(bytes.NewBuffer(buf)))
 	return err
 }
@@ -69,11 +68,13 @@ func Http_Response_Parse(buf []byte, n int) int64 {
 // Return a new array of data.
 func Http_Response_Decode(buf []byte, n int) ([]byte, int) {
 	str := string(buf)
+	fmt.Printf("Origin:\n%v\n", str)
+
+	// Index
+	index := strings.Index(str, "\r\n\r\n") + 4
 	data := make([]byte, 0)
 	head := make([]byte, 0)
-	index := strings.Index(str, "\r\n\r\n") + 4
 	head = append(head, str[:index]...)
-	fmt.Printf("Origin:\n%v\n", string(buf))
 	for {
 		size := 0
 		fmt.Sscanf(str[index:], "%x", &size)
@@ -85,17 +86,45 @@ func Http_Response_Decode(buf []byte, n int) ([]byte, int) {
 		index += size + 2
 	}
 
-	// Here, do something to data.
-	data = bytes.Replace(data, []byte("a"), []byte("bb"), -1)
-
-	head = append(head, "\r\n"...)
-	head = append(head, []byte(fmt.Sprintf("%x", len(data)))...)
-	head = append(head, "\r\n"...)
 	head = append(head, data...)
-	head = append(head, "\r\n0\r\n\r\n"...)
 	fmt.Printf("Final:\n%v\n", string(head))
-	return data, 0
+	return head, 0
 }
 
-func Http_Request_Modify(buf []byte, n int) {
+// Decode for Fix content-length.
+func Http_Response_Modify(buf []byte, n int) ([]byte, int) {
+	index := strings.Index(string(buf), "\r\n\r\n")
+	fmt.Printf("Origin2:\n%v\n", string(buf))
+	data := make([]byte, 0)
+	data = append(data, buf[index:]...)
+
+	// Here, do something to data.
+	// data = bytes.Replace(data, []byte("努力"), []byte("天天摆烂"), -1)
+
+	head := Http_Response_Modify_Head(string(buf[:index]), len(data) - 4)
+
+	head = append(head, data...)
+	fmt.Printf("Final2:\n%v\n", string(head))
+	fmt.Println("Compare",len(head) - len(buf))
+
+	return head, len(head)
+}
+
+// Modify head information
+func Http_Response_Modify_Head(str string, n int) []byte {
+	slice := strings.Split(str, "\r\n")
+	target := "Content-Length: " + fmt.Sprintf("%d", n)
+	for i := 0; i < len(slice); i++ {
+		if strings.HasPrefix(slice[i], "Content-Length:") {
+			fmt.Println("Code:", slice[i])
+			slice[i] = target
+			break
+		}
+		if strings.HasPrefix(slice[i], "Transfer-Encoding: chunked") {
+			fmt.Println("Code:", slice[i])
+			slice[i] = target
+			break
+		}
+	}
+	return []byte(strings.Join(slice, "\r\n"))
 }
