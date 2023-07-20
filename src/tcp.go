@@ -1,6 +1,7 @@
 package main
 
 import (
+	"bufio"
 	"encoding/binary"
 	"errors"
 	"fmt"
@@ -29,13 +30,9 @@ func TCP_Connection(client net.Conn, atyp int, addr string) error {
 		return errors.New("dial failure: " + err.Error())
 	}
 
-	// IP string
+	// IP string Process
 	IP := Parse_IP_Port(target.LocalAddr().String())
-	if len(IP) == 6 { // ipv4 = 4 + 2
-		atyp = 0x01
-	} else { // ipv6 = 16 + 2
-		atyp = 0x04
-	}
+	atyp = Get_Atyp(IP)
 
 	_, err = client.Write(append([]byte{0x05, 0x00, 0x00, byte(atyp)}, IP...))
 	if err != nil {
@@ -43,10 +40,38 @@ func TCP_Connection(client net.Conn, atyp int, addr string) error {
 		return err
 	}
 
-	// Forward 2 connection
-	fmt.Println("Connection Success!")
-	go Forward_Client(client, target)
-	go Forward_Target(client, target)
+	reader := bufio.NewReader(client)
+	str, err := reader.Peek(3)
+	if err != nil {
+		fmt.Println("???????????????????")
+		return err
+	}
+
+	if plays_genshin_impact && Is_TLS(str) {
+		target.Close()
+
+		// Build up a proxy server.
+		proxy_addr, err := TLS_Build_Proxy(addr)
+		if err != nil {
+			client.Close()
+			return err
+		}
+
+		// Dial the proxy as new target.
+		target, err = net.Dial("tcp", proxy_addr)
+		if err != nil {
+			client.Close()
+			return err
+		}
+
+		fmt.Println("TCP Connection Success!")
+		go Forward_TCP(client, target, reader)
+	} else {
+		// Forward 2 connection
+		fmt.Println("TCP Connection Success!")
+		go Forward_TCP(client, target, reader)
+	}
+
 	return nil
 }
 

@@ -8,46 +8,6 @@ import (
 	"strings"
 )
 
-// Return 0 if not HTTP
-// Return 1 if HTTP GET
-// Return 2 if HTTP POST
-// Return 3
-func Is_Request_Content(buf []byte, n int) int {
-	if n > 8 {
-		n = 8
-	}
-	str := string(buf[:n])
-	switch {
-	case strings.HasPrefix(str, "GET"):
-		return 1
-	case strings.HasPrefix(str, "POST"):
-		return 2
-	case strings.HasPrefix(str, "PUT"):
-		return 3
-	case strings.HasPrefix(str, "DELETE"):
-		return 4
-	case strings.HasPrefix(str, "PATCH"):
-		return 5
-	case strings.HasPrefix(str, "HEAD"):
-		return 6
-	case strings.HasPrefix(str, "OPTIONS"):
-		return 7
-	default:
-		return 0
-	}
-}
-
-func Is_Response_Content(buf []byte, n int) int {
-	if n > 8 {
-		n = 8
-	}
-	if strings.HasPrefix(string(buf[:n]), "HTTP") {
-		return 1
-	} else {
-		return 0
-	}
-}
-
 // Parse HTTP GET
 func Http_Request_Parse(buf []byte, n int) error {
 	_, err := http.ReadRequest(bufio.NewReader(bytes.NewBuffer(buf)))
@@ -87,25 +47,25 @@ func Http_Response_Decode(buf []byte, n int) ([]byte, int) {
 	}
 
 	head = append(head, data...)
-	fmt.Printf("Final:\n%v\n", string(head))
+	// fmt.Printf("Final:\n%v\n", string(head))
 	return head, 0
 }
 
 // Decode for Fix content-length.
 func Http_Response_Modify(buf []byte, n int) ([]byte, int) {
 	index := strings.Index(string(buf), "\r\n\r\n")
-	fmt.Printf("Origin2:\n%v\n", string(buf))
+	// fmt.Printf("Origin2:\n%v\n", string(buf))
 	data := make([]byte, 0)
 	data = append(data, buf[index:]...)
 
 	// Here, do something to data.
 	// data = bytes.Replace(data, []byte("努力"), []byte("天天摆烂"), -1)
 
-	head := Http_Response_Modify_Head(string(buf[:index]), len(data) - 4)
+	head := Http_Response_Modify_Head(string(buf[:index]), len(data)-4)
 
 	head = append(head, data...)
-	fmt.Printf("Final2:\n%v\n", string(head))
-	fmt.Println("Compare",len(head) - len(buf))
+	// fmt.Printf("Final2:\n%v\n", string(head))
+	fmt.Println("Compare", len(head)-len(buf))
 
 	return head, len(head)
 }

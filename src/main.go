@@ -1,7 +1,6 @@
 package main
 
 import (
-	"crypto/tls"
 	"errors"
 	"fmt"
 	"io"
@@ -9,7 +8,7 @@ import (
 )
 
 // Whether to enable TLS hijack
-const plays_genshin_impact = false
+const plays_genshin_impact = true
 
 func main() {
 	fmt.Println("Hello World!")
@@ -106,11 +105,7 @@ func Socks5_Connect(client net.Conn) error {
 	addr := TCP_Address_Parse(user_addr, atyp)
 
 	if cmd == 1 {
-		if plays_genshin_impact {
-			return TLS_Connection(client, atyp, addr)
-		} else {
-			return TCP_Connection(client, atyp, addr)
-		}
+		return TCP_Connection(client, atyp, addr)
 	} else if cmd == 3 {
 		return UDP_Connection(client, atyp, addr)
 	} else {
@@ -119,47 +114,19 @@ func Socks5_Connect(client net.Conn) error {
 }
 
 func Socks5_Link(addr string) {
-	if plays_genshin_impact {
-		cert, err := tls.LoadX509KeyPair("localhost.crt", "localhost.key")
-		if err != nil {
-			fmt.Println("Proxy: loadkey:", err)
-			return
-		}
+	server, err := net.Listen("tcp", addr)
+	if err != nil {
+		fmt.Println("Listen failed:", err)
+		return
+	}
+	defer server.Close()
 
-		config := &tls.Config{
-			Certificates:       []tls.Certificate{cert},
-			InsecureSkipVerify: true,
-		}
-		server, err := tls.Listen("tcp", addr, config)
+	for {
+		client, err := server.Accept()
 		if err != nil {
-			fmt.Println("Proxy: listen:", err)
-			return
+			fmt.Println("Accept failed:", err)
+			continue
 		}
-		defer server.Close()
-
-		for {
-			client, err := server.Accept()
-			if err != nil {
-				fmt.Println("Proxy: accept:", err)
-				return
-			}
-			go Process(client)
-		}
-	} else {
-		server, err := net.Listen("tcp", addr)
-		if err != nil {
-			fmt.Println("Listen failed:", err)
-			return
-		}
-		defer server.Close()
-
-		for {
-			client, err := server.Accept()
-			if err != nil {
-				fmt.Println("Accept failed:", err)
-				continue
-			}
-			go Process(client)
-		}
+		go Process(client)
 	}
 }
