@@ -21,7 +21,7 @@ func Forward_Target(client, target net.Conn) {
 	lens := 0
 	index := -1
 	clens := int64(-1)
-
+	compress := ""
 	for {
 		nr, er := target.Read(buf[:size])
 
@@ -38,7 +38,7 @@ func Forward_Target(client, target net.Conn) {
 				// Tries to find the first index of the header
 				index = strings.Index(string(data), "\r\n\r\n")
 				if index != -1 {
-					clens = Http_Response_Parse(data, lens)
+					clens, compress = Http_Response_Parse(data, lens)
 					if clens == -2 {
 						fmt.Println("DEBUG || HTTP Parse error")
 						return // HTTP Parse Error.
@@ -63,7 +63,7 @@ func Forward_Target(client, target net.Conn) {
 			}
 
 			if tag == -1 {
-				data, lens = Http_Response_Modify(data, lens)
+				data, lens = Http_Response_Modify(data, lens, compress)
 				nw, ew := client.Write(data[:lens])
 				if nw < lens || ew != nil {
 					fmt.Println("DEBUG || End of forward! 3")
