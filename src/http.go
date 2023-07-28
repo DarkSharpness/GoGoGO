@@ -82,6 +82,14 @@ func Http_Head_Update(buf []byte, n int) []byte {
 			slice[i] = target
 		}
 		if strings.HasPrefix(slice[i], "Content-Encoding") {
+			switch slice[i][18:] {
+			case "gzip":
+			case "br":
+			case "deflate":
+			case "": // Just break!!!
+			default: // Will not modify unknown encoding.
+				continue
+			}
 			j = i
 		}
 	}
@@ -110,6 +118,9 @@ func Http_Body_Modify(data []byte, compress string) []byte {
 	case "deflate":
 		flateReader := flate.NewReader(bytes.NewReader(data))
 		data, _ = ioutil.ReadAll(flateReader)
+	case "": // No need to decompress
+	default: // Will not modify unknown encoding
+		return data
 	}
 	return bytes.Replace(data, []byte("百度"), []byte("DarkSharpness"), -1)
 }
